@@ -92,24 +92,28 @@ cv::Mat Tracking::guidedFilter(const cv::Mat& srcMat, int radius, double eps)
     cv::Mat resultImage;
     cv::Mat dstImage = mean_a.mul(guidedMat) + mean_b;
 
-    dstImage.convertTo(resultImage, CV_8U);
+    dstImage.convertTo(resultImage, CV_64FC1);
     return resultImage;
 }
 
-cv::Mat Tracking::AdaptiveFilter(const cv::Mat& v)
+cv::Mat Tracking::AdaptiveFilter(const cv::Mat& vv)
 {
     //v - original image; u - kept (low-frequency part); n - (high-frequency part)
     //n = t (Texture) + s (Fixed Pattern Noise)
-    cv::Mat u, n, s;
+    cv::Mat v = cv::Mat::zeros(vv.size(), vv.type());
+    vv.convertTo(v, CV_64FC1);
+    v = v / 255;
+    cv::Mat u = cv::Mat::zeros(v.size(), CV_64FC1);
+    cv::Mat n = cv::Mat::zeros(v.size(), CV_64FC1);
+    cv::Mat s = cv::Mat::zeros(v.size(), v.type());
 
     /**********************************
      * Guided Filter
     ***********************************/
 
-    u = guidedFilter(v, 3, 200);
+    u = guidedFilter(v, 3, 0.1);
     //cout<<cv::depthToString(v.depth())<<endl;
     n = v - u;
-    s = cv::Mat::zeros(v.size(), CV_64FC1);
 
     /**********************************
      * Calculate the HDS1d(i) of image
@@ -142,10 +146,10 @@ cv::Mat Tracking::AdaptiveFilter(const cv::Mat& v)
             int x_max = min(v.cols - 1, x + 4);
             for (int j = x_min; j <= x_max; ++j)
             {
-                double ui = u.at<uchar>(y, x);
-                double uj = u.at<uchar>(y, j);
+                double ui = u.at<double>(y, x);
+                double uj = u.at<double>(y, j);
                 double Ki = std::exp(-(ui - uj) * (ui - uj) / (2 * sigma_r1 * sigma_r1));
-                numerator += Ki * v.at<uchar>(y, j) / 361;
+                numerator += Ki * v.at<double>(y, j);
                 denominator += Ki;
             }
             HDS.at<double>(y, x) = numerator / denominator;
@@ -154,6 +158,7 @@ cv::Mat Tracking::AdaptiveFilter(const cv::Mat& v)
     /**********************************
      * Construct FPN s(i)
     ***********************************/
+    
     for (int y = 0; y < v.rows; ++y)
         for (int x = 0; x < v.cols; ++x)
         {
@@ -163,17 +168,31 @@ cv::Mat Tracking::AdaptiveFilter(const cv::Mat& v)
             int y_min = max(0, y - int(Ki / 2));
             int y_max = min(v.rows - 1, y + int(Ki / 2));
             for (int j = y_min; j <= y_max; ++j)
-                nj += n.at<uchar>(j, x);
+                nj += n.at<double>(j, x);
             s.at<double>(y, x) = nj / Ki;
-            if (nj / Ki == 0 && y < 500 && y>100)
-            {
-                cout << "y: " << y << " x: " << x << " nj:" << nj << " Ki:" << Ki << endl;
-            }
         }
-
-    s.convertTo(s, CV_16U);
-    cv::Mat result;
-    result = v - s;
-    cout << "done" << endl;
-    return result;
+    s.convertTo(s, CV_64FC1);
+    /*
+    // 创建并打开输出文件
+    std::ofstream outputFile("output.txt");
+    // 将图像灰度值写入到输出文件
+    for (int y = 0; y < s.rows; ++y) {
+        for (int x = 0; x < s.cols; ++x) {
+            // 获取像素的灰度值
+            double pixelValue = static_cast<double>(s.at<double>(y, x));
+            // 写入灰度值到输出文件
+            outputFile << pixelValue << " ";
+        }
+        outputFile << std::endl; // 每一行结束后换行
+    }
+    // 关闭输出文件
+    outputFile.close();
+    */
+    
+    cv::Mat imageresult = cv::Mat::zeros(v.size(), v.type());
+    imageresult = v - s;
+    imageresult = imageresult * 255;
+    cout << "Adaptive done" << endl;
+    
+    return imageresult;
 }
