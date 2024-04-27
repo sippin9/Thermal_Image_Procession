@@ -15,6 +15,7 @@ int main() {
     // Counter for processed images
     int processedCount = 0;
 
+    /*
     //
     //    Part1: Infrared Left
     //
@@ -61,8 +62,8 @@ int main() {
         if (processedCount >= 200)
             break;
     }
+    */
     
-    /*
 
     //
     //  Part2: Visible Left
@@ -70,8 +71,8 @@ int main() {
     
     processedCount = 0;
     
-    std::string sequenceDir1 = "F:/_SLAM/STheReO/image/stereo_thermal_14_right/";
-    std::string outputDir1 = "F:/_SLAM/STheReO/image/stereo_thermal_14_right_adapt/";
+    std::string sequenceDir1 = "F:/_SLAM/STheReO/image/stereo_left/";
+    std::string outputDir1 = "F:/_SLAM/STheReO/image/stereo_left_output/";
 
     std::vector<std::string> filenames1;
 
@@ -95,7 +96,7 @@ int main() {
         }
 
         // Calibrate visible
-        cv::Mat normalizedImage = Tracking::PreProcess(rawImage);
+        cv::Mat normalizedImage = Tracking::PreProcess1(rawImage);
 
         // Create new filename based on the sequence number
         std::string filename = std::to_string(processedCount + 1) + ".png";
@@ -119,7 +120,7 @@ int main() {
     
     // Define the paths to the folders containing left and right images
     std::string left_folder_path = "F:/_SLAM/STheReO/image/stereo_thermal_14_left_adapt/";
-    std::string right_folder_path = "F:/_SLAM/STheReO/image/stereo_thermal_14_right_adapt/";
+    std::string right_folder_path = "F:/_SLAM/STheReO/image/stereo_left_output/";
 
     // Define the folder to save the matched images
     std::string output_folder_path = "F:/_SLAM/STheReO/image/matched_images/";
@@ -185,8 +186,6 @@ int main() {
         std::cout << "Saved matched image: " << output_image_path << std::endl;
 
     }
-
-    */
     
 
     return 0;

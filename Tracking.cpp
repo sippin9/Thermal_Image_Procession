@@ -268,8 +268,11 @@ cv::Mat Tracking::PreProcess1(const cv::Mat& inputImage) {
     fy1 = 429.531;
     fy2 = 790.926;
 
+    cv::Mat medianImage;
+    cv::medianBlur(inputImage, medianImage, 5);
+
     cv::Mat scaledImage;
-    cv::resize(inputImage, scaledImage, cv::Size(), fx1 / fx2, fy1 / fy2);
+    cv::resize(medianImage, scaledImage, cv::Size(), fx1 / fx2, fy1 / fy2);
 
     // Get the dimensions of the input image
     int width = scaledImage.cols;
@@ -285,11 +288,19 @@ cv::Mat Tracking::PreProcess1(const cv::Mat& inputImage) {
     cv::Rect roiRect(roiX, roiY, roiWidth, roiHeight);
     cv::Mat croppedImage = scaledImage(roiRect).clone();
 
-    cv::Mat denoisedImage;
+    //cv::Mat claheImage;
+    //cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();
+    //clahe->setClipLimit(8); // (int)(4.(88)/256)
+    //clahe->setTilesGridSize(cv::Size(8, 8)); // 将图像分为8*8块
+    //clahe->apply(croppedImage, claheImage);
+
+    //cv::Mat denoisedImage;
     //cv::medianBlur(croppedImage, denoisedImage, 5);
     //cv::bilateralFilter(croppedImage, denoisedImage, 9, 75, 75);
-    cv::fastNlMeansDenoising(croppedImage, denoisedImage, 10, 7, 21);
+    //cv::fastNlMeansDenoising(croppedImage, denoisedImage, 10, 7, 21);
 
-    // Return the cropped image
-    return denoisedImage;
+    cv::Mat gammaImage = PreGamma(croppedImage, 0.5);
+
+    // Return image
+    return gammaImage;
 }
