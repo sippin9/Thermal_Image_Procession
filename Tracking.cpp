@@ -67,6 +67,21 @@ cv::Mat Tracking::PreSVD(const cv::Mat& imRectRight) {
     return returnImage;
 }
 
+cv::Mat Tracking::PreGamma(const cv::Mat& imRectLeft, float gamma)
+{
+    // Apply gamma correction
+    cv::Mat enhanced = imRectLeft;
+    for (int i = 0; i < enhanced.rows; ++i)
+        for (int j = 0; j < enhanced.cols; ++j)
+        {
+            double normalizedValue = enhanced.at<uchar>(i, j) / 255.0;
+            double correctedValue = std::pow(normalizedValue, gamma) * 255.0;
+            enhanced.at<uchar>(i, j) = static_cast<uchar>(correctedValue);
+        }
+    enhanced.convertTo(enhanced, CV_8U);
+    return enhanced;
+}
+
 cv::Mat Tracking::guidedFilter(const cv::Mat& srcMat, int radius, double eps)
 {
     //Use the source Mat as guided Mat
@@ -103,16 +118,16 @@ cv::Mat Tracking::AdaptiveFilter(const cv::Mat& vv)
     cv::Mat v = cv::Mat::zeros(vv.size(), vv.type());
     vv.convertTo(v, CV_64FC1);
     v = v / 255;
-    cv::Mat u = cv::Mat::zeros(v.size(), CV_64FC1);
-    cv::Mat n = cv::Mat::zeros(v.size(), CV_64FC1);
+    cv::Mat u = cv::Mat::zeros(v.size(), v.type());
+    cv::Mat n = cv::Mat::zeros(v.size(), v.type());
     cv::Mat s = cv::Mat::zeros(v.size(), v.type());
 
     /**********************************
      * Guided Filter
     ***********************************/
 
-    u = guidedFilter(v, 3, 0.1);
-    //cout<<cv::depthToString(v.depth())<<endl;
+    u = guidedFilter(v, 3, 0.01);
+    //cout<<cv::depthToString(u.depth())<<endl;
     n = v - u;
 
     /**********************************
@@ -132,7 +147,7 @@ cv::Mat Tracking::AdaptiveFilter(const cv::Mat& vv)
     cv::Sobel(u, grad_ux, CV_64FC1, 1, 0, 3);
     cv::Scalar mean_ux, std_ux;
     cv::meanStdDev(grad_ux, mean_ux, std_ux);
-    double sigma_r1 = 10 * std_ux[0];
+    double sigma_r1 = 15 * std_ux[0];
 
     //Step 2. Construct HDS1d(i)
     cv::Mat HDS = cv::Mat::zeros(v.size(), v.type());
@@ -158,7 +173,7 @@ cv::Mat Tracking::AdaptiveFilter(const cv::Mat& vv)
     /**********************************
      * Construct FPN s(i)
     ***********************************/
-    
+
     for (int y = 0; y < v.rows; ++y)
         for (int x = 0; x < v.cols; ++x)
         {
@@ -170,29 +185,111 @@ cv::Mat Tracking::AdaptiveFilter(const cv::Mat& vv)
             for (int j = y_min; j <= y_max; ++j)
                 nj += n.at<double>(j, x);
             s.at<double>(y, x) = nj / Ki;
+            // nj becomes negative
         }
     s.convertTo(s, CV_64FC1);
-    /*
-    // 创建并打开输出文件
-    std::ofstream outputFile("output.txt");
-    // 将图像灰度值写入到输出文件
-    for (int y = 0; y < s.rows; ++y) {
-        for (int x = 0; x < s.cols; ++x) {
-            // 获取像素的灰度值
-            double pixelValue = static_cast<double>(s.at<double>(y, x));
-            // 写入灰度值到输出文件
-            outputFile << pixelValue << " ";
+
+    cv::Mat imageresult = cv::Mat::zeros(v.size(), CV_8U);
+    for (int y = 0; y < imageresult.rows; ++y)
+        for (int x = 0; x < imageresult.cols; ++x)
+        {
+            double val = 255 * (v.at<double>(y, x) - s.at<double>(y, x));
+            imageresult.at<uchar>(y, x) = (int)val;
         }
-        outputFile << std::endl; // 每一行结束后换行
-    }
-    // 关闭输出文件
-    outputFile.close();
+
+    //cv::Mat denoisedImage;
+    //cv::fastNlMeansDenoising(/*reconstructedImage*/imageresult, denoisedImage);
+
+    // Apply median filtering
+    /*
+    cv::Mat enhancedImage;
+    cv::medianBlur(denoisedImage, enhancedImage, 3);
+    enhancedImage.convertTo(enhancedImage, CV_8U);
     */
-    
-    cv::Mat imageresult = cv::Mat::zeros(v.size(), v.type());
-    imageresult = v - s;
-    imageresult = imageresult * 255;
-    cout << "Adaptive done" << endl;
-    
+    //imageresult = imageresult * 255;
+    //cout << "Adaptive done" << endl;
     return imageresult;
+}
+
+cv::Mat Tracking::PreProcess(const cv::Mat& im)
+{
+    // Get the dimensions of the input image
+    int width = im.cols;
+    int height = im.rows;
+
+    // Define the region of interest (ROI) coordinates
+    int roiX = (width - 640) / 2;
+    int roiY = (height - 304) / 2;
+    int roiWidth = 640;
+    int roiHeight = 304;
+
+    // Create a ROI (Region of Interest) from the input image
+    cv::Rect roiRect(roiX, roiY, roiWidth, roiHeight);
+    cv::Mat inputImage = im(roiRect).clone();
+
+    double valMin, valMax;
+    cv::Mat mImGrayP = inputImage;
+    cv::minMaxLoc(mImGrayP, &valMin, &valMax);
+
+    cv::Mat mImGrayRead = cv::Mat::zeros(mImGrayP.size(), CV_8U);
+    for (int y = 0; y < mImGrayP.rows; ++y)
+        for (int x = 0; x < mImGrayP.cols; ++x)
+        {
+            double nn = (mImGrayP.at<ushort>(y, x) - valMin) * 255 / (valMax - valMin);
+            mImGrayRead.at<uchar>(y, x) = (int)nn;
+        }
+
+    cv::Mat mImGrayGamma = PreGamma(mImGrayRead, 0.65);
+
+    cv::Mat mImGrayHist = cv::Mat::zeros(mImGrayP.size(), CV_8U);
+    //cv::equalizeHist(mImGrayRead, mImGrayHist);
+
+    cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();
+    clahe->setClipLimit(8); // (int)(4.(88)/256)
+    clahe->setTilesGridSize(cv::Size(8, 8)); // 将图像分为8*8块
+    clahe->apply(mImGrayRead, mImGrayHist);
+
+    cv::Mat mImGrayAdapt = 1 * mImGrayHist + 0 * mImGrayGamma;
+
+    //Adaptive FPN filter useful for dark images
+    mImGrayP = AdaptiveFilter(mImGrayAdapt);
+    //mImGrayP = mImGrayAdapt;
+
+    //Too slow as denoising
+    //cv::fastNlMeansDenoising(mImGrayP, mImGrayP);
+
+    return mImGrayP;
+}
+
+cv::Mat Tracking::PreProcess1(const cv::Mat& inputImage) {
+    static double fx1, fy1, fx2, fy2;
+    fx1 = 429.433;
+    fx2 = 788.413;
+    fy1 = 429.531;
+    fy2 = 790.926;
+
+    cv::Mat scaledImage;
+    cv::resize(inputImage, scaledImage, cv::Size(), fx1 / fx2, fy1 / fy2);
+
+    // Get the dimensions of the input image
+    int width = scaledImage.cols;
+    int height = scaledImage.rows;
+
+    // Define the region of interest (ROI) coordinates
+    int roiX = (width - 640) / 2;
+    int roiY = (height - 304) / 2;
+    int roiWidth = 640;
+    int roiHeight = 304;
+
+    // Create a ROI (Region of Interest) from the input image
+    cv::Rect roiRect(roiX, roiY, roiWidth, roiHeight);
+    cv::Mat croppedImage = scaledImage(roiRect).clone();
+
+    cv::Mat denoisedImage;
+    //cv::medianBlur(croppedImage, denoisedImage, 5);
+    //cv::bilateralFilter(croppedImage, denoisedImage, 9, 75, 75);
+    cv::fastNlMeansDenoising(croppedImage, denoisedImage, 10, 7, 21);
+
+    // Return the cropped image
+    return denoisedImage;
 }
