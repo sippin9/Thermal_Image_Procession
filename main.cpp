@@ -15,7 +15,7 @@ int main() {
     // Counter for processed images
     int processedCount = 0;
 
-    /*
+    
     //
     //    Part1: Infrared Left
     //
@@ -62,7 +62,54 @@ int main() {
         if (processedCount >= 200)
             break;
     }
-    */
+    
+    // Directory containing the sequence of images
+    sequenceDir = "F:/_SLAM/STheReO/image/stereo_thermal_14_left_adapt/";
+    outputDir = "F:/_SLAM/STheReO/image/stereo_thermal_14_left_edges/";
+
+    std::vector<std::string> filenames01;
+
+    // Iterate over each file in the directory and collect filenames
+    for (const auto& entry : fs::directory_iterator(sequenceDir)) {
+        if (fs::is_regular_file(entry.path())) {
+            filenames01.push_back(entry.path().string());
+        }
+    }
+
+    // Sort filenames
+    std::sort(filenames01.begin(), filenames01.end());
+
+    processedCount = 0;
+
+    // Iterate over each file in the directory
+    for (const auto& imagePath : filenames01) {
+        // Read the image
+        cv::Mat rawImage = cv::imread(imagePath, cv::IMREAD_GRAYSCALE);
+        if (rawImage.empty()) {
+            std::cerr << "Error: Could not read the image file: " << imagePath << std::endl;
+            continue; // Move to the next image if this one couldn't be read
+        }
+
+        // Apply Canny edge detection
+        cv::Mat edges;
+        double lower_thresh = 180; // Lower threshold for Canny
+        double upper_thresh = 200; // Upper threshold for Canny
+        cv::Canny(rawImage, edges, lower_thresh, upper_thresh);
+
+        // Create new filename based on the sequence number
+        std::string filename = "thermal_" + std::to_string(processedCount + 1) + "_edges.png";
+
+        // Save the processed image with the new filename
+        std::string processedImagePath = outputDir + filename;
+        cv::imwrite(processedImagePath, edges);
+
+        // Increment the processed count
+        processedCount++;
+
+        // Break out of the loop if processedCount reaches 200
+        if (processedCount >= 200)
+            break;
+    }
     
 
     //
@@ -104,6 +151,54 @@ int main() {
         // Save the processed image with the same filename
         std::string processedImagePath = outputDir1 + filename;
         cv::imwrite(processedImagePath, normalizedImage);
+
+        // Increment the processed count
+        processedCount++;
+
+        // Break out of the loop if processedCount reaches 200
+        if (processedCount >= 200)
+            break;
+    }
+
+    // Directory containing the sequence of images
+    sequenceDir1 = "F:/_SLAM/STheReO/image/stereo_left_output/";
+    outputDir1 = "F:/_SLAM/STheReO/image/stereo_left_edges/";
+
+    std::vector<std::string> filenames11;
+
+    // Iterate over each file in the directory and collect filenames
+    for (const auto& entry : fs::directory_iterator(sequenceDir1)) {
+        if (fs::is_regular_file(entry.path())) {
+            filenames11.push_back(entry.path().string());
+        }
+    }
+
+    // Sort filenames
+    std::sort(filenames11.begin(), filenames11.end());
+
+    processedCount = 0;
+
+    // Iterate over each file in the directory
+    for (const auto& imagePath : filenames11) {
+        // Read the image
+        cv::Mat rawImage = cv::imread(imagePath, cv::IMREAD_GRAYSCALE);
+        if (rawImage.empty()) {
+            std::cerr << "Error: Could not read the image file: " << imagePath << std::endl;
+            continue; // Move to the next image if this one couldn't be read
+        }
+
+        // Apply Canny edge detection
+        cv::Mat edges;
+        double lower_thresh = 30; // Lower threshold for Canny
+        double upper_thresh = 90; // Upper threshold for Canny
+        cv::Canny(rawImage, edges, lower_thresh, upper_thresh);
+
+        // Create new filename based on the sequence number
+        std::string filename = std::to_string(processedCount + 1) + "_edges.png";
+
+        // Save the processed image with the new filename
+        std::string processedImagePath = outputDir1 + filename;
+        cv::imwrite(processedImagePath, edges);
 
         // Increment the processed count
         processedCount++;
