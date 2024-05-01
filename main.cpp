@@ -14,8 +14,8 @@ int main() {
     
     // Counter for processed images
     int processedCount = 0;
-
     
+    /*
     //
     //    Part1: Infrared Left
     //
@@ -95,6 +95,8 @@ int main() {
         double lower_thresh = 180; // Lower threshold for Canny
         double upper_thresh = 200; // Upper threshold for Canny
         cv::Canny(rawImage, edges, lower_thresh, upper_thresh);
+
+        //cv::FAST();
 
         // Create new filename based on the sequence number
         std::string filename = "thermal_" + std::to_string(processedCount + 1) + "_edges.png";
@@ -207,18 +209,20 @@ int main() {
         if (processedCount >= 200)
             break;
     }
-    
+    */
 
     //
     //  Part3: ORB Matcher
     //
     
     // Define the paths to the folders containing left and right images
-    std::string left_folder_path = "F:/_SLAM/STheReO/image/stereo_thermal_14_left_adapt/";
-    std::string right_folder_path = "F:/_SLAM/STheReO/image/stereo_left_output/";
+    std::string left_folder_path = "F:/_SLAM/STheReO/image/stereo_left_edges/";
+    std::string right_folder_path = "F:/_SLAM/STheReO/image/stereo_thermal_14_left_edges/";
 
     // Define the folder to save the matched images
     std::string output_folder_path = "F:/_SLAM/STheReO/image/matched_images/";
+    std::string output_folder_path1 = "F:/_SLAM/STheReO/image/fast_left/";
+    std::string output_folder_path2 = "F:/_SLAM/STheReO/image/fast_right/";
 
     // Initialize ORB detector and descriptor extractor
     cv::Ptr<cv::ORB> orb_detector = cv::ORB::create();
@@ -240,7 +244,7 @@ int main() {
         std::string filename = fs::path(left_image_path).filename().string();
 
         // Construct the corresponding right image path
-        std::string right_image_path = right_folder_path + filename; // Assuming same filenames in right folder
+        std::string right_image_path = right_folder_path + "thermal_" + filename; // Assuming same filenames in right folder
 
         // Read right image
         cv::Mat right_image = cv::imread(right_image_path, cv::IMREAD_GRAYSCALE);
@@ -253,6 +257,25 @@ int main() {
 
         // Detect ORB keypoints and compute descriptors for left and right images
         std::vector<cv::KeyPoint> keypoints1, keypoints2;
+        Tracking::FAST_t(left_image,	//待检测的图像,可见光图像
+            keypoints1,			//存储角点位置的容器
+            true);				//使能非极大值抑制
+        Tracking::FAST_t(right_image,	//待检测的图像,红外,高噪音
+            keypoints2,			//存储角点位置的容器
+            true);				//使能非极大值抑制
+
+        // Draw keypoints on both images
+        cv::Mat left_image_with_keypoints, right_image_with_keypoints;
+        cv::drawKeypoints(left_image, keypoints1, left_image_with_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+        cv::drawKeypoints(right_image, keypoints2, right_image_with_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+        
+        // Save matched image to output folder
+        std::string output_image_path1 = output_folder_path1 + filename;
+        std::string output_image_path2 = output_folder_path2 + filename;
+        cv::imwrite(output_image_path1, left_image_with_keypoints);
+        cv::imwrite(output_image_path2, right_image_with_keypoints);
+        
+        /*
         cv::Mat descriptors1, descriptors2;
         orb_detector->detectAndCompute(left_image, cv::noArray(), keypoints1, descriptors1);
         orb_detector->detectAndCompute(right_image, cv::noArray(), keypoints2, descriptors2);
@@ -264,6 +287,7 @@ int main() {
         if (descriptors2.type() != CV_32F) {
             descriptors2.convertTo(descriptors2, CV_32F);
         }
+        
 
         // Use FLANN based matcher
         cv::FlannBasedMatcher matcher;
@@ -279,7 +303,7 @@ int main() {
         cv::imwrite(output_image_path, matched_image);
 
         std::cout << "Saved matched image: " << output_image_path << std::endl;
-
+        */
     }
     
 

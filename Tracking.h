@@ -5,6 +5,10 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <algorithm>
+#include "opencv2/imgproc/imgproc.hpp"
+#include "opencv2/highgui/highgui.hpp"
+#include <opencv2/features2d.hpp>
+#include <opencv2/imgcodecs.hpp>
 
 class Tracking {
 public:
@@ -15,6 +19,8 @@ public:
     static cv::Mat PreGamma(const cv::Mat& imRectLeft, float gamma);
     static cv::Mat guidedFilter(const cv::Mat& srcMat, int radius, double eps);
     static cv::Mat AdaptiveFilter(const cv::Mat& vv);
+    static void FAST_t(const cv::Mat& _img, std::vector<cv::KeyPoint>& keypoints, bool nonmax_suppression);
+    static void mmakeOffsets(int pixel[25], int rowStride, int patternSize);
 };
 
 #endif // TRACKING_H

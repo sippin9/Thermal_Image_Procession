@@ -8,7 +8,7 @@ include_directories("F:/_SLAM/opencv/build/include")
 link_directories("F:/_SLAM/opencv/build/x64/vc15/lib")
 
 # Add executable
-add_executable (SVD "main.cpp" "Tracking.cpp" "Tracking.h")
+add_executable (SVD "main.cpp" "Tracking.cpp" "Tracking.h" "canny.cpp" "canny.h")
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET SVD PROPERTY CXX_STANDARD 20)

@@ -304,3 +304,162 @@ cv::Mat Tracking::PreProcess1(const cv::Mat& inputImage) {
     // Return image
     return gammaImage;
 }
+
+void Tracking::FAST_t(const cv::Mat& _img, std::vector<cv::KeyPoint>& keypoints, bool nonmax_suppression)
+{
+    cv::Mat img = _img.clone();
+    int patternSize = 16;
+    const int K = patternSize / 2, N = patternSize + K + 1;
+
+    int i, j, k, pixel[25], pixel1[25];
+    mmakeOffsets(pixel, (int)img.step, patternSize);
+    mmakeOffsets(pixel1, (int)img.step, K);
+
+    keypoints.clear();
+
+    cv::AutoBuffer<uchar> _buf((img.cols + 16) * 3 * (sizeof(int) + sizeof(uchar)) + 128);
+    uchar* buf[3];
+    buf[0] = _buf; buf[1] = buf[0] + img.cols; buf[2] = buf[1] + img.cols;//保存对应角点强度值，否则为0
+    int* cpbuf[3];
+    cpbuf[0] = (int*)cv::alignPtr(buf[2] + img.cols, sizeof(int)) + 1;//保存角点位置，+1为了存储这一行的角点总数
+    cpbuf[1] = cpbuf[0] + img.cols + 1;
+    cpbuf[2] = cpbuf[1] + img.cols + 1;
+    memset(buf[0], 0, img.cols * 3);
+    
+    // Since L-FAST uses circle values of pti, extend 3 to 4 
+    for (i = 4; i < img.rows - 3; i++)
+    {
+        const uchar* ptr = img.ptr<uchar>(i) + 3;
+        uchar* curr = buf[(i - 3) % 3];
+        int* cornerpos = cpbuf[(i - 3) % 3];
+        memset(curr, 0, img.cols);
+        int ncorners = 0;
+
+        if (i < img.rows - 4)
+        {
+            j = 4;
+            
+            for (; j < img.cols - 4; j++, ptr++)
+            {
+                int v = ptr[0];
+                
+                //  Exclude all non-edge points
+                if (v == 0) continue;
+
+                
+                int count = 0;
+
+                //  Traverse the pixel values on the circle in turn. If there are two or more points
+                //  with a value of 255 and p is not on the line of the only two points, note the pixels with value
+                //  of 255 as t1, t2, · · ·, tn
+                bool isLine = 0;
+                for (k = 0; k < K; k++)    
+                {
+                    //check pairs
+                    bool x1 = ptr[pixel[k]]>0 ? 1:0;
+                    bool x2 = ptr[pixel[k+K]]>0 ? 1:0;
+                    if (x1 && x2) {
+                        count += 2;
+                        isLine = 1;
+                    }
+                    else if (x1 || x2) {
+                        count++;
+                    }
+                }
+                if ((count == 2 && isLine == 1) || (count < 2))
+                    continue;
+
+
+                
+                //  Find the symmetric point pt1, pt2, · · ·, ptn of p about t1, t2, · · ·, tn.If pti is 0,
+                //  check the value of eight points around pti, if there are more than three points equal to 255,
+                //  mark pti as 255. When there are two or more pti values of 255, p is a corner.Otherwise, p is
+                //  not a point feature
+                count = 0;
+                
+                for (k = 0; k < patternSize; k++)
+                {
+                    bool x1 = ptr[pixel[k]] > 0 ? 1 : 0;
+                    bool x2 = ptr[pixel[k + K]] > 0 ? 1 : 0;
+                    if (!x1) continue;
+                    if (x1 && x2) {
+                        count++;
+                        continue;
+                    }
+                    
+                    //check eight points around pti
+                    int countt = 0;
+                    for (int kt = 0; kt < K; kt++)
+                    {
+                        if (ptr[pixel[k] + pixel1[kt]] > 0) countt++;
+                        if (countt >= 2) { count++; break; }
+                    }
+                    
+                }
+                
+                if (count >= 2) {
+                    cornerpos[ncorners++] = j;
+                    if (nonmax_suppression) curr[j] = count;
+                }
+                
+            }
+        }
+        
+        cornerpos[-1] = ncorners;//存储第i行上的角点总数量
+
+        if (i == 4)
+            continue;
+        //与邻域的8个角点响应值做比较，非角点的响应值为0
+        const uchar* prev = buf[(i - 4 + 3) % 3];  //相邻的两行
+        const uchar* pprev = buf[(i - 5 + 3) % 3];//
+        cornerpos = cpbuf[(i - 4 + 3) % 3];//存储角点的列位置
+        ncorners = cornerpos[-1]; //存储第i行上的角点总数量
+
+        for (k = 0; k < ncorners; k++)
+        {
+            j = cornerpos[k];
+            int score = prev[j];
+            if (!nonmax_suppression ||    //非极大值抑制,用角点强度值比较周围8个强度响应值
+                (score > prev[j + 1] && score > prev[j - 1] &&
+                    score > pprev[j - 1] && score > pprev[j] && score > pprev[j + 1] &&
+                    score > curr[j - 1] && score > curr[j] && score > curr[j + 1]))
+            {
+                keypoints.push_back(cv::KeyPoint((float)j, (float)(i - 1), 7.f, -1, (float)score));
+            }
+        }
+    }
+    
+}
+
+void Tracking::mmakeOffsets(int pixel[25], int rowStride, int patternSize)
+{
+    static const int offsets16[][2] =
+    {
+        {0,  3}, { 1,  3}, { 2,  2}, { 3,  1}, { 3, 0}, { 3, -1}, { 2, -2}, { 1, -3},
+        {0, -3}, {-1, -3}, {-2, -2}, {-3, -1}, {-3, 0}, {-3,  1}, {-2,  2}, {-1,  3}
+    };
+
+    static const int offsets12[][2] =
+    {
+        {0,  2}, { 1,  2}, { 2,  1}, { 2, 0}, { 2, -1}, { 1, -2},
+        {0, -2}, {-1, -2}, {-2, -1}, {-2, 0}, {-2,  1}, {-1,  2}
+    };
+
+    static const int offsets8[][2] =
+    {
+        {0,  1}, { 1,  1}, { 1, 0}, { 1, -1},
+        {0, -1}, {-1, -1}, {-1, 0}, {-1,  1}
+    };
+
+    const int(*offsets)[2] = patternSize == 16 ? offsets16 :
+        patternSize == 12 ? offsets12 :
+        patternSize == 8 ? offsets8 : 0;
+
+    CV_Assert(pixel && offsets);
+
+    int k = 0;
+    for (; k < patternSize; k++)
+        pixel[k] = offsets[k][0] + offsets[k][1] * rowStride;
+    for (; k < 25; k++)
+        pixel[k] = pixel[k - patternSize];
+}
