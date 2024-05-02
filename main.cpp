@@ -10,12 +10,37 @@
 
 namespace fs = std::filesystem;
 
+void filterMatchesByEpipolarConstraint(const std::vector<cv::KeyPoint>& keypoints1, const std::vector<cv::KeyPoint>& keypoints2, std::vector<cv::DMatch>& matches) {
+    // Convert keypoints into Point2f
+    std::vector<cv::Point2f> points1;
+    std::vector<cv::Point2f> points2;
+    for (auto& match : matches) {
+        points1.push_back(keypoints1[match.queryIdx].pt);
+        points2.push_back(keypoints2[match.trainIdx].pt);
+    }
+
+    // Compute the Fundamental matrix using RANSAC to filter out outliers
+    std::vector<uchar> inliers_mask(matches.size());
+    cv::Mat F = cv::findFundamentalMat(points1, points2, cv::FM_RANSAC, 3.0, 0.99, inliers_mask);
+
+    // Filter matches using the inliers mask
+    std::vector<cv::DMatch> inlier_matches;
+    for (size_t i = 0; i < matches.size(); i++) {
+        if (inliers_mask[i]) {
+            inlier_matches.push_back(matches[i]);
+        }
+    }
+
+    // Update the original matches with the filtered inlier matches
+    matches.swap(inlier_matches);
+}
+
 int main() { 
     
     // Counter for processed images
     int processedCount = 0;
-    
     /*
+    
     //
     //    Part1: Infrared Left
     //
@@ -76,11 +101,6 @@ int main() {
         }
     }
 
-    // Sort filenames
-    std::sort(filenames01.begin(), filenames01.end());
-
-    processedCount = 0;
-
     // Iterate over each file in the directory
     for (const auto& imagePath : filenames01) {
         // Read the image
@@ -99,20 +119,14 @@ int main() {
         //cv::FAST();
 
         // Create new filename based on the sequence number
-        std::string filename = "thermal_" + std::to_string(processedCount + 1) + "_edges.png";
+        std::string filename = fs::path(imagePath).filename().string();
 
         // Save the processed image with the new filename
         std::string processedImagePath = outputDir + filename;
         cv::imwrite(processedImagePath, edges);
 
-        // Increment the processed count
-        processedCount++;
-
-        // Break out of the loop if processedCount reaches 200
-        if (processedCount >= 200)
-            break;
     }
-    
+    */
 
     //
     //  Part2: Visible Left
@@ -121,7 +135,7 @@ int main() {
     processedCount = 0;
     
     std::string sequenceDir1 = "F:/_SLAM/STheReO/image/stereo_left/";
-    std::string outputDir1 = "F:/_SLAM/STheReO/image/stereo_left_output/";
+    std::string outputDir1 = "F:/_SLAM/STheReO/image/stereo_left_adapt/";
 
     std::vector<std::string> filenames1;
 
@@ -163,7 +177,7 @@ int main() {
     }
 
     // Directory containing the sequence of images
-    sequenceDir1 = "F:/_SLAM/STheReO/image/stereo_left_output/";
+    sequenceDir1 = "F:/_SLAM/STheReO/image/stereo_left_adapt/";
     outputDir1 = "F:/_SLAM/STheReO/image/stereo_left_edges/";
 
     std::vector<std::string> filenames11;
@@ -174,11 +188,6 @@ int main() {
             filenames11.push_back(entry.path().string());
         }
     }
-
-    // Sort filenames
-    std::sort(filenames11.begin(), filenames11.end());
-
-    processedCount = 0;
 
     // Iterate over each file in the directory
     for (const auto& imagePath : filenames11) {
@@ -196,36 +205,29 @@ int main() {
         cv::Canny(rawImage, edges, lower_thresh, upper_thresh);
 
         // Create new filename based on the sequence number
-        std::string filename = std::to_string(processedCount + 1) + "_edges.png";
+        std::string filename = fs::path(imagePath).filename().string();
 
         // Save the processed image with the new filename
         std::string processedImagePath = outputDir1 + filename;
         cv::imwrite(processedImagePath, edges);
-
-        // Increment the processed count
-        processedCount++;
-
-        // Break out of the loop if processedCount reaches 200
-        if (processedCount >= 200)
-            break;
     }
-    */
+    
 
     //
     //  Part3: ORB Matcher
     //
     
     // Define the paths to the folders containing left and right images
-    std::string left_folder_path = "F:/_SLAM/STheReO/image/stereo_left_edges/";
-    std::string right_folder_path = "F:/_SLAM/STheReO/image/stereo_thermal_14_left_edges/";
+    std::string left_folder_path = "F:/_SLAM/STheReO/image/stereo_thermal_14_right_edges/";
+    std::string left_folder_path_des = "F:/_SLAM/STheReO/image/stereo_thermal_14_right_adapt/";
+    std::string right_folder_path = "F:/_SLAM/STheReO/image/stereo_left_edges/";
+    std::string right_folder_path_des = "F:/_SLAM/STheReO/image/stereo_left_adapt/";
 
     // Define the folder to save the matched images
     std::string output_folder_path = "F:/_SLAM/STheReO/image/matched_images/";
+    std::string output_folder_path_canny = "F:/_SLAM/STheReO/image/matched_images_canny/";
     std::string output_folder_path1 = "F:/_SLAM/STheReO/image/fast_left/";
     std::string output_folder_path2 = "F:/_SLAM/STheReO/image/fast_right/";
-
-    // Initialize ORB detector and descriptor extractor
-    cv::Ptr<cv::ORB> orb_detector = cv::ORB::create();
 
     // Loop through left images folder
     for (const auto& entry : fs::directory_iterator(left_folder_path)) {
@@ -244,19 +246,29 @@ int main() {
         std::string filename = fs::path(left_image_path).filename().string();
 
         // Construct the corresponding right image path
-        std::string right_image_path = right_folder_path + "thermal_" + filename; // Assuming same filenames in right folder
+        std::string right_image_path = right_folder_path + filename; // Assuming same filenames in right folder
+        std::string left_image_path_des = left_folder_path_des + filename;
+        std::string right_image_path_des = right_folder_path_des + filename;
 
         // Read right image
         cv::Mat right_image = cv::imread(right_image_path, cv::IMREAD_GRAYSCALE);
-
+        cv::Mat left_image_des = cv::imread(left_image_path_des, cv::IMREAD_GRAYSCALE);
+        cv::Mat right_image_des = cv::imread(right_image_path_des, cv::IMREAD_GRAYSCALE);
+        if (left_image_des.empty()) {
+            std::cerr << "Could not read the leftdes image: " << left_image_path_des << std::endl;
+            continue; // Move to the next image
+        }
         // Check if the right image is successfully read
-        if (right_image.empty()) {
-            std::cerr << "Could not read the right image: " << right_image_path << std::endl;
+        if (right_image_des.empty()) {
+            std::cerr << "Could not read the des image: " << right_image_path_des << std::endl;
             continue; // Move to the next image
         }
 
         // Detect ORB keypoints and compute descriptors for left and right images
         std::vector<cv::KeyPoint> keypoints1, keypoints2;
+        cv::Mat descriptors1, descriptors2;
+        cv::Mat descriptors11, descriptors22;
+
         Tracking::FAST_t(left_image,	//待检测的图像,可见光图像
             keypoints1,			//存储角点位置的容器
             true);				//使能非极大值抑制
@@ -266,19 +278,25 @@ int main() {
 
         // Draw keypoints on both images
         cv::Mat left_image_with_keypoints, right_image_with_keypoints;
-        cv::drawKeypoints(left_image, keypoints1, left_image_with_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-        cv::drawKeypoints(right_image, keypoints2, right_image_with_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+        cv::drawKeypoints(left_image_des, keypoints1, left_image_with_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+        cv::drawKeypoints(right_image_des, keypoints2, right_image_with_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
         
         // Save matched image to output folder
         std::string output_image_path1 = output_folder_path1 + filename;
         std::string output_image_path2 = output_folder_path2 + filename;
         cv::imwrite(output_image_path1, left_image_with_keypoints);
-        cv::imwrite(output_image_path2, right_image_with_keypoints);
+        cv::imwrite(output_image_path2, right_image_with_keypoints);      
         
-        /*
-        cv::Mat descriptors1, descriptors2;
-        orb_detector->detectAndCompute(left_image, cv::noArray(), keypoints1, descriptors1);
-        orb_detector->detectAndCompute(right_image, cv::noArray(), keypoints2, descriptors2);
+        // Create ORB descriptor extractor
+        cv::Ptr<cv::ORB> orb = cv::ORB::create();
+        cv::Ptr<cv::ORB> orb1 = cv::ORB::create();
+
+        // Compute descriptors
+        orb->compute(left_image_des, keypoints1, descriptors1);
+        orb->compute(right_image_des, keypoints2, descriptors2);
+
+        orb1->compute(left_image, keypoints1, descriptors11);
+        orb1->compute(right_image, keypoints2, descriptors22);
 
         // Convert descriptors to float type required by FLANN matcher
         if (descriptors1.type() != CV_32F) {
@@ -286,24 +304,42 @@ int main() {
         }
         if (descriptors2.type() != CV_32F) {
             descriptors2.convertTo(descriptors2, CV_32F);
+        }  
+        if (descriptors11.type() != CV_32F) {
+            descriptors11.convertTo(descriptors11, CV_32F);
         }
-        
+        if (descriptors22.type() != CV_32F) {
+            descriptors22.convertTo(descriptors22, CV_32F);
+        }
 
         // Use FLANN based matcher
         cv::FlannBasedMatcher matcher;
         std::vector<cv::DMatch> matches;
         matcher.match(descriptors1, descriptors2, matches);
 
+        cv::FlannBasedMatcher matcher1;
+        std::vector<cv::DMatch> matches1;
+        matcher1.match(descriptors11, descriptors22, matches1);
+
+        // Filter matches based on the epipolar constraint
+        filterMatchesByEpipolarConstraint(keypoints1, keypoints2, matches);
+        filterMatchesByEpipolarConstraint(keypoints1, keypoints2, matches1);
+
         // Draw matches
         cv::Mat matched_image;
-        cv::drawMatches(left_image, keypoints1, right_image, keypoints2, matches, matched_image);
+        cv::drawMatches(left_image_des, keypoints1, right_image_des, keypoints2, matches, matched_image);
+
+        cv::Mat matched_image1;
+        cv::drawMatches(left_image, keypoints1, right_image, keypoints2, matches1, matched_image1);
 
         // Save matched image to output folder
         std::string output_image_path = output_folder_path + filename;
         cv::imwrite(output_image_path, matched_image);
 
-        std::cout << "Saved matched image: " << output_image_path << std::endl;
-        */
+        std::string output_image_path_canny = output_folder_path_canny + filename;
+        cv::imwrite(output_image_path_canny, matched_image1);
+
+        
     }
     
 

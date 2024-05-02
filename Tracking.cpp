@@ -257,6 +257,10 @@ cv::Mat Tracking::PreProcess(const cv::Mat& im)
 
     //Too slow as denoising
     //cv::fastNlMeansDenoising(mImGrayP, mImGrayP);
+    /*cv::Mat edges;
+    double lower_thresh = 180; // Lower threshold for Canny
+    double upper_thresh = 200; // Upper threshold for Canny
+    cv::Canny(mImGrayP, edges, lower_thresh, upper_thresh);*/
 
     return mImGrayP;
 }
