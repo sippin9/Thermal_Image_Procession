@@ -262,7 +262,7 @@ cv::Mat Tracking::PreProcess(const cv::Mat& im)
     double upper_thresh = 200; // Upper threshold for Canny
     cv::Canny(mImGrayP, edges, lower_thresh, upper_thresh);*/
 
-    return mImGrayP;
+    return mImGrayAdapt;
 }
 
 cv::Mat Tracking::PreProcess1(const cv::Mat& inputImage) {
@@ -350,7 +350,6 @@ void Tracking::FAST_t(const cv::Mat& _img, std::vector<cv::KeyPoint>& keypoints,
                 //  Exclude all non-edge points
                 if (v == 0) continue;
 
-                
                 int count = 0;
 
                 //  Traverse the pixel values on the circle in turn. If there are two or more points

@@ -35,19 +35,20 @@ void filterMatchesByEpipolarConstraint(const std::vector<cv::KeyPoint>& keypoint
     matches.swap(inlier_matches);
 }
 
+
 int main() { 
-    
+    /*
     // Counter for processed images
     int processedCount = 0;
-    /*
+    
     
     //
     //    Part1: Infrared Left
     //
 
     // Directory containing the sequence of images
-    std::string sequenceDir = "F:/_SLAM/STheReO/image/stereo_thermal_14_left/";
-    std::string outputDir = "F:/_SLAM/STheReO/image/stereo_thermal_14_left_adapt/";
+    std::string sequenceDir = "F:/_SLAM/Valley/image/stereo_thermal_14_left/";
+    std::string outputDir = "F:/_SLAM/Valley/image/stereo_thermal_14_left_adapt/";
 
     std::vector<std::string> filenames;
 
@@ -89,8 +90,8 @@ int main() {
     }
     
     // Directory containing the sequence of images
-    sequenceDir = "F:/_SLAM/STheReO/image/stereo_thermal_14_left_adapt/";
-    outputDir = "F:/_SLAM/STheReO/image/stereo_thermal_14_left_edges/";
+    sequenceDir = "F:/_SLAM/Valley/image/stereo_thermal_14_left_adapt/";
+    outputDir = "F:/_SLAM/Valley/image/stereo_thermal_14_left_edges/";
 
     std::vector<std::string> filenames01;
 
@@ -126,7 +127,6 @@ int main() {
         cv::imwrite(processedImagePath, edges);
 
     }
-    */
 
     //
     //  Part2: Visible Left
@@ -134,8 +134,8 @@ int main() {
     
     processedCount = 0;
     
-    std::string sequenceDir1 = "F:/_SLAM/STheReO/image/stereo_left/";
-    std::string outputDir1 = "F:/_SLAM/STheReO/image/stereo_left_adapt/";
+    std::string sequenceDir1 = "F:/_SLAM/Valley/image/stereo_left/";
+    std::string outputDir1 = "F:/_SLAM/Valley/image/stereo_left_adapt/";
 
     std::vector<std::string> filenames1;
 
@@ -177,8 +177,8 @@ int main() {
     }
 
     // Directory containing the sequence of images
-    sequenceDir1 = "F:/_SLAM/STheReO/image/stereo_left_adapt/";
-    outputDir1 = "F:/_SLAM/STheReO/image/stereo_left_edges/";
+    sequenceDir1 = "F:/_SLAM/Valley/image/stereo_left_adapt/";
+    outputDir1 = "F:/_SLAM/Valley/image/stereo_left_edges/";
 
     std::vector<std::string> filenames11;
 
@@ -212,22 +212,22 @@ int main() {
         cv::imwrite(processedImagePath, edges);
     }
     
-
+    
     //
     //  Part3: ORB Matcher
     //
     
     // Define the paths to the folders containing left and right images
-    std::string left_folder_path = "F:/_SLAM/STheReO/image/stereo_thermal_14_right_edges/";
-    std::string left_folder_path_des = "F:/_SLAM/STheReO/image/stereo_thermal_14_right_adapt/";
-    std::string right_folder_path = "F:/_SLAM/STheReO/image/stereo_left_edges/";
-    std::string right_folder_path_des = "F:/_SLAM/STheReO/image/stereo_left_adapt/";
+    std::string left_folder_path = "F:/_SLAM/Valley/image/stereo_thermal_14_left_edges/";
+    std::string left_folder_path_des = "F:/_SLAM/Valley/image/stereo_thermal_14_left_adapt/";
+    std::string right_folder_path = "F:/_SLAM/Valley/image/stereo_left_edges/";
+    std::string right_folder_path_des = "F:/_SLAM/Valley/image/stereo_left_adapt/";
 
     // Define the folder to save the matched images
-    std::string output_folder_path = "F:/_SLAM/STheReO/image/matched_images/";
-    std::string output_folder_path_canny = "F:/_SLAM/STheReO/image/matched_images_canny/";
-    std::string output_folder_path1 = "F:/_SLAM/STheReO/image/fast_left/";
-    std::string output_folder_path2 = "F:/_SLAM/STheReO/image/fast_right/";
+    std::string output_folder_path = "F:/_SLAM/Valley/image/matched_images/";
+    std::string output_folder_path_canny = "F:/_SLAM/Valley/image/matched_images_canny/";
+    std::string output_folder_path1 = "F:/_SLAM/Valley/image/fast_left/";
+    std::string output_folder_path2 = "F:/_SLAM/Valley/image/fast_right/";
 
     // Loop through left images folder
     for (const auto& entry : fs::directory_iterator(left_folder_path)) {
@@ -338,10 +338,91 @@ int main() {
 
         std::string output_image_path_canny = output_folder_path_canny + filename;
         cv::imwrite(output_image_path_canny, matched_image1);
-
-        
     }
-    
+    */
 
+    //
+    //  Part4: Edge Fusion
+    //
+
+    
+    // Load the images from the two cameras
+    cv::Mat image11 = cv::imread("F:/_SLAM/Valley/image/stereo_thermal_14_left_edges/1.png", cv::IMREAD_GRAYSCALE);
+    cv::Mat image12 = cv::imread("F:/_SLAM/Valley/image/stereo_left_edges/1.png", cv::IMREAD_GRAYSCALE);
+    cv::Mat image1 = cv::imread("F:/_SLAM/Valley/image/stereo_thermal_14_left_adapt/1.png", cv::IMREAD_GRAYSCALE);
+
+    cv::Mat image21 = cv::imread("F:/_SLAM/Valley/image/stereo_thermal_14_left_edges/2.png", cv::IMREAD_GRAYSCALE);
+    cv::Mat image22 = cv::imread("F:/_SLAM/Valley/image/stereo_left_edges/2.png", cv::IMREAD_GRAYSCALE);
+    cv::Mat image2 = cv::imread("F:/_SLAM/Valley/image/stereo_thermal_14_left_adapt/1.png", cv::IMREAD_GRAYSCALE);
+
+    // Define the homography matrix (example values here, you should use your computed matrix)
+    cv::Mat homography_matrix = (cv::Mat_<double>(3, 3) << 1.026881464, -0.009055988, -20.19330972,
+        0.009055988, 1.026881464, -15.005,
+        0.0, 0.0, 1.0);
+    
+    // Create a matrix to store the transformed image
+    cv::Mat transformed_image1, transformed_image2, transformed_image1raw, transformed_image2raw;
+    // Warp the first image to align with the second image
+    cv::warpPerspective(image11, transformed_image1, homography_matrix, image12.size());
+    cv::warpPerspective(image21, transformed_image2, homography_matrix, image22.size());
+    cv::warpPerspective(image1, transformed_image1raw, homography_matrix, image1.size());
+    cv::warpPerspective(image2, transformed_image2raw, homography_matrix, image2.size());
+    
+    // Create a matrix to store the fused image
+    cv::Mat fused_image1, fused_image2;
+    // Average the transformed image and the second image
+    cv::addWeighted(transformed_image1, 0.5, image12, 0.5, 0, fused_image1);
+    cv::addWeighted(transformed_image2, 0.5, image22, 0.5, 0, fused_image2);
+    
+    std::string output_image_path_addedge1 = "F:/_SLAM/Valley/image/fused1.png";
+    std::string output_image_path_addedge2 = "F:/_SLAM/Valley/image/fused2.png";
+    cv::imwrite(output_image_path_addedge1, fused_image1);
+    cv::imwrite(output_image_path_addedge2, fused_image2);
+    
+    std::vector<cv::KeyPoint> keypointfuse1, keypointfuse2;
+    cv::Mat descriptors1, descriptors2;
+
+    //TODO: Enhance score in FAST-t: 255 scores 2, 123 scores 1
+
+    Tracking::FAST_t(fused_image1,	//待检测的图像,可见光图像
+        keypointfuse1,			//存储角点位置的容器
+        true);				//使能非极大值抑制
+    Tracking::FAST_t(fused_image2,	//待检测的图像,可见光图像
+        keypointfuse2,			//存储角点位置的容器
+        true);				//使能非极大值抑制
+    
+    cv::Ptr<cv::ORB> orb = cv::ORB::create();
+    orb->compute(transformed_image1raw, keypointfuse1, descriptors1);
+    orb->compute(transformed_image2raw, keypointfuse2, descriptors2);
+    
+    // Convert descriptors to float type required by FLANN matcher
+    if (descriptors1.type() != CV_32F) {
+        descriptors1.convertTo(descriptors1, CV_32F);
+    }
+    if (descriptors2.type() != CV_32F) {
+        descriptors2.convertTo(descriptors2, CV_32F);
+    }
+
+    // Use FLANN based matcher
+    cv::FlannBasedMatcher matcherfuse;
+    std::vector<cv::DMatch> matchesfuse;
+    matcherfuse.match(descriptors1, descriptors2, matchesfuse);
+    
+    // Filter matches based on the epipolar constraint
+    filterMatchesByEpipolarConstraint(keypointfuse1, keypointfuse2, matchesfuse);
+
+    // Draw keypoints on both images
+    cv::Mat left_image_with_keypoints, right_image_with_keypoints;
+    cv::drawKeypoints(transformed_image1raw, keypointfuse1, left_image_with_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+    cv::drawKeypoints(transformed_image2raw, keypointfuse2, right_image_with_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+    cv::imwrite("F:/_SLAM/Valley/image/fast1.png", left_image_with_keypoints);
+    cv::imwrite("F:/_SLAM/Valley/image/fast2.png", right_image_with_keypoints);
+
+    cv::Mat matched_imagefuse;
+    cv::drawMatches(transformed_image1raw, keypointfuse1, transformed_image2raw, keypointfuse2, matchesfuse, matched_imagefuse);
+
+    std::string output_fusedimage_path = "F:/_SLAM/Valley/image/match.png";
+    cv::imwrite(output_fusedimage_path, matched_imagefuse);
+    
     return 0;
 }
