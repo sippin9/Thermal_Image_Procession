@@ -126,7 +126,7 @@ cv::Mat Tracking::AdaptiveFilter(const cv::Mat& vv)
      * Guided Filter
     ***********************************/
 
-    u = guidedFilter(v, 3, 0.01);
+    u = guidedFilter(v, 3, 0.04);
     //cout<<cv::depthToString(u.depth())<<endl;
     n = v - u;
 
@@ -147,7 +147,9 @@ cv::Mat Tracking::AdaptiveFilter(const cv::Mat& vv)
     cv::Sobel(u, grad_ux, CV_64FC1, 1, 0, 3);
     cv::Scalar mean_ux, std_ux;
     cv::meanStdDev(grad_ux, mean_ux, std_ux);
-    double sigma_r1 = 15 * std_ux[0];
+    double sigma_r1 = std_ux[0];
+
+    //cout <<"Sigma: "<< sigma_r1 << endl;
 
     //Step 2. Construct HDS1d(i)
     cv::Mat HDS = cv::Mat::zeros(v.size(), v.type());
@@ -164,10 +166,12 @@ cv::Mat Tracking::AdaptiveFilter(const cv::Mat& vv)
                 double ui = u.at<double>(y, x);
                 double uj = u.at<double>(y, j);
                 double Ki = std::exp(-(ui - uj) * (ui - uj) / (2 * sigma_r1 * sigma_r1));
+                //cout << (ui - uj) / (sigma_r1 * sigma_r1) << ' ';
                 numerator += Ki * v.at<double>(y, j);
                 denominator += Ki;
             }
             HDS.at<double>(y, x) = numerator / denominator;
+            //cout << numerator / denominator << ' ';
         }
 
     /**********************************
@@ -213,20 +217,99 @@ cv::Mat Tracking::AdaptiveFilter(const cv::Mat& vv)
 
 cv::Mat Tracking::PreProcess(const cv::Mat& im)
 {
+    double valMin, valMax;
+    cv::Mat mImGrayP = im;
+    cv::minMaxLoc(mImGrayP, &valMin, &valMax);
+    //cout << inputImage.depth() << endl;
+    //cout << valMin << ' ' << valMax << endl;
+
+    cv::Mat mImGrayRead = cv::Mat::zeros(mImGrayP.size(), CV_8U);
+    for (int y = 0; y < mImGrayP.rows; ++y)
+        for (int x = 0; x < mImGrayP.cols; ++x)
+        {
+            double nn = (mImGrayP.at<ushort>(y, x) - valMin) * 255 / (valMax - valMin);
+            mImGrayRead.at<uchar>(y, x) = (int)nn;
+        }
+
+    cv::Mat distortedImage = mImGrayRead.clone();
+    // Define the camera matrix (fx, fy, cx, cy)
+    // Assuming some typical values here - you should replace these with your actual camera parameters
+    cv::Mat cameraMatrix = (cv::Mat_<double>(3, 3) <<
+        437.38861083256637, 0, 323.5284494924228,
+        0, 437.29475745770907, 256.36315482047905,
+        0, 0, 1.0);
+
+    // Define distortion coefficients (k1, k2, p1, p2)
+    cv::Mat distCoeffs = (cv::Mat_<double>(4, 1) <<
+        -0.431640703150235,     // k1
+        0.17811649959498482,    // k2
+        -0.0014905118708651568, // p1
+        -0.0011389876158246133);// p2
+
+    // Compute the optimal new camera matrix
+    cv::Mat newCameraMatrix = cv::getOptimalNewCameraMatrix(cameraMatrix, distCoeffs,
+        distortedImage.size(), 1.0);
+
+    // Get the dimensions of the input image
+    int width = distortedImage.cols;
+    int height = distortedImage.rows;
+
+    //cout << width << ' ' << height << endl;
+
+    // Define the region of interest (ROI) coordinates
+    int roiX = (width - 624) / 2;
+    int roiY = (height - 464) / 2;
+    int roiWidth = 624;
+    int roiHeight = 464;
+
+    // Create a ROI (Region of Interest) from the input image
+    cv::Rect roiRect(roiX, roiY, roiWidth, roiHeight);
+    cv::Mat inputImage = distortedImage(roiRect).clone();
+
+    //cv::Mat mImGrayGamma = PreGamma(mImGrayRead, 0.65);
+
+    cv::Mat mImGrayHist = cv::Mat::zeros(inputImage.size(), CV_8U);
+    //cv::equalizeHist(mImGrayRead, mImGrayHist);
+
+    
+    cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();
+    clahe->setClipLimit(8); // (int)(4.(88)/256)
+    clahe->setTilesGridSize(cv::Size(8, 8)); // 将图像分为8*8块
+    clahe->apply(inputImage, mImGrayHist);
+    
+    cv::Mat mImGrayAdapt = 1 * mImGrayHist;
+
+    //Adaptive FPN filter useful for dark images
+    //mImGrayP = AdaptiveFilter(mImGrayAdapt);
+    mImGrayP = mImGrayAdapt;
+
+    //Too slow as denoising
+    //cv::fastNlMeansDenoising(mImGrayP, mImGrayP);
+    /*cv::Mat edges;
+    double lower_thresh = 180; // Lower threshold for Canny
+    double upper_thresh = 200; // Upper threshold for Canny
+    cv::Canny(mImGrayP, edges, lower_thresh, upper_thresh);*/
+
+    return mImGrayP;
+}
+
+cv::Mat Tracking::Histo(const cv::Mat& im) {
     // Get the dimensions of the input image
     int width = im.cols;
     int height = im.rows;
 
+    cout << width << ' ' << height << endl;
+
     // Define the region of interest (ROI) coordinates
     int roiX = (width - 640) / 2;
-    int roiY = (height - 304) / 2;
+    int roiY = (height - 512) / 2;
     int roiWidth = 640;
-    int roiHeight = 304;
+    int roiHeight = 512;
 
     // Create a ROI (Region of Interest) from the input image
     cv::Rect roiRect(roiX, roiY, roiWidth, roiHeight);
-    cv::Mat inputImage = im(roiRect).clone();
-
+    cv::Mat inputImage = im.clone();
+    
     double valMin, valMax;
     cv::Mat mImGrayP = inputImage;
     cv::minMaxLoc(mImGrayP, &valMin, &valMax);
@@ -238,59 +321,139 @@ cv::Mat Tracking::PreProcess(const cv::Mat& im)
             double nn = (mImGrayP.at<ushort>(y, x) - valMin) * 255 / (valMax - valMin);
             mImGrayRead.at<uchar>(y, x) = (int)nn;
         }
+    
+    // Variables for histogram
+    int histSize = 256; // number of bins
+    float range[] = { 0, 256 }; // pixel value range
+    const float* histRange = { range };
 
-    cv::Mat mImGrayGamma = PreGamma(mImGrayRead, 0.65);
+    cv::Mat hist;
+    bool uniform = true, accumulate = false;
 
-    cv::Mat mImGrayHist = cv::Mat::zeros(mImGrayP.size(), CV_8U);
-    //cv::equalizeHist(mImGrayRead, mImGrayHist);
+    // Calculate the histogram
+    cv::calcHist(&mImGrayRead, 1, 0, cv::Mat(), hist, 1, &histSize, &histRange, uniform, accumulate);
 
-    cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();
-    clahe->setClipLimit(8); // (int)(4.(88)/256)
-    clahe->setTilesGridSize(cv::Size(8, 8)); // 将图像分为8*8块
-    clahe->apply(mImGrayRead, mImGrayHist);
+    // Create an image to display the histogram
+    int hist_w = 512, hist_h = 400;
+    int bin_w = cvRound((double)hist_w / histSize);
+    cv::Mat histImage(hist_h, hist_w, CV_8UC1, cv::Scalar(0, 0, 0));
 
-    cv::Mat mImGrayAdapt = 1 * mImGrayHist + 0 * mImGrayGamma;
+    // Normalize the result to [0, histImage.rows]
+    cv::normalize(hist, hist, 0, histImage.rows, cv::NORM_MINMAX, -1, cv::Mat());
 
-    //Adaptive FPN filter useful for dark images
-    mImGrayP = AdaptiveFilter(mImGrayAdapt);
-    //mImGrayP = mImGrayAdapt;
+    // Draw the histogram
+    for (int i = 1; i < histSize; i++) {
+        cv::line(histImage,
+            cv::Point(bin_w * (i - 1), hist_h - cvRound(hist.at<float>(i - 1))),
+            cv::Point(bin_w * (i), hist_h - cvRound(hist.at<float>(i))),
+            cv::Scalar(255), 2, 8, 0);
+    }
 
-    //Too slow as denoising
-    //cv::fastNlMeansDenoising(mImGrayP, mImGrayP);
-    /*cv::Mat edges;
-    double lower_thresh = 180; // Lower threshold for Canny
-    double upper_thresh = 200; // Upper threshold for Canny
-    cv::Canny(mImGrayP, edges, lower_thresh, upper_thresh);*/
-
-    return mImGrayAdapt;
+    for (int i = 1; i < histSize; i++) {
+        cv::line(histImage,
+            cv::Point(bin_w * (i - 1), hist_h - cvRound(hist.at<float>(i - 1))),
+            cv::Point(bin_w * (i), hist_h - cvRound(hist.at<float>(i))),
+            cv::Scalar(255), 2, 8, 0);
+    }
+    
+    return mImGrayRead;
 }
 
-cv::Mat Tracking::PreProcess1(const cv::Mat& inputImage) {
-    static double fx1, fy1, fx2, fy2;
-    fx1 = 429.433;
-    fx2 = 788.413;
-    fy1 = 429.531;
-    fy2 = 790.926;
-
-    cv::Mat medianImage;
-    cv::medianBlur(inputImage, medianImage, 5);
-
-    cv::Mat scaledImage;
-    cv::resize(medianImage, scaledImage, cv::Size(), fx1 / fx2, fy1 / fy2);
-
+cv::Mat Tracking::Histo1(const cv::Mat& im) {
     // Get the dimensions of the input image
-    int width = scaledImage.cols;
-    int height = scaledImage.rows;
+    int width = im.cols;
+    int height = im.rows;
+
+    cout << width << ' ' << height << endl;
 
     // Define the region of interest (ROI) coordinates
     int roiX = (width - 640) / 2;
-    int roiY = (height - 304) / 2;
+    int roiY = (height - 512) / 2;
     int roiWidth = 640;
-    int roiHeight = 304;
+    int roiHeight = 512;
 
     // Create a ROI (Region of Interest) from the input image
     cv::Rect roiRect(roiX, roiY, roiWidth, roiHeight);
-    cv::Mat croppedImage = scaledImage(roiRect).clone();
+    cv::Mat inputImage = im.clone();
+    
+    // Variables for histogram
+    int histSize = 256; // number of bins
+    float range[] = { 0, 256 }; // pixel value range
+    const float* histRange = { range };
+
+    cv::Mat hist;
+    bool uniform = true, accumulate = false;
+
+    // Calculate the histogram
+    cv::calcHist(&inputImage, 1, 0, cv::Mat(), hist, 1, &histSize, &histRange, uniform, accumulate);
+
+    // Create an image to display the histogram
+    int hist_w = 512, hist_h = 400;
+    int bin_w = cvRound((double)hist_w / histSize);
+    cv::Mat histImage(hist_h, hist_w, CV_8UC1, cv::Scalar(0, 0, 0));
+
+    // Normalize the result to [0, histImage.rows]
+    cv::normalize(hist, hist, 0, histImage.rows, cv::NORM_MINMAX, -1, cv::Mat());
+
+    // Draw the histogram
+    for (int i = 1; i < histSize; i++) {
+        cv::line(histImage,
+            cv::Point(bin_w * (i - 1), hist_h - cvRound(hist.at<float>(i - 1))),
+            cv::Point(bin_w * (i), hist_h - cvRound(hist.at<float>(i))),
+            cv::Scalar(255), 2, 8, 0);
+    }
+
+    for (int i = 1; i < histSize; i++) {
+        cv::line(histImage,
+            cv::Point(bin_w * (i - 1), hist_h - cvRound(hist.at<float>(i - 1))),
+            cv::Point(bin_w * (i), hist_h - cvRound(hist.at<float>(i))),
+            cv::Scalar(255), 2, 8, 0);
+    }
+    
+    return inputImage;
+}
+
+cv::Mat Tracking::PreProcess1(const cv::Mat& inputImage) {
+
+    cv::Mat im;
+    cvtColor(inputImage, im, CV_RGB2GRAY);
+
+    cv::Mat distortedImage = im.clone();
+    // Define the camera matrix (fx, fy, cx, cy)
+    // Assuming some typical values here - you should replace these with your actual camera parameters
+    cv::Mat cameraMatrix = (cv::Mat_<double>(3, 3) <<
+        531.0787710720505, 0, 322.0434384516226,
+        0, 530.9280349280389, 239.58555406488455,
+        0, 0, 1.0);
+
+    // Define distortion coefficients (k1, k2, p1, p2)
+    cv::Mat distCoeffs = (cv::Mat_<double>(4, 1) <<
+        0.029762942995503135,     // k1
+        -0.0835531221056956,    // k2
+        0.000913361749036359, // p1
+        0.0029817041017012043);// p2
+
+    // Compute the optimal new camera matrix
+    cv::Mat newCameraMatrix = cv::getOptimalNewCameraMatrix(cameraMatrix, distCoeffs,
+        distortedImage.size(), 1.0);
+
+    // Undistort the image
+    cv::Mat undistortedImage;
+    cv::undistort(distortedImage, undistortedImage, cameraMatrix, distCoeffs, newCameraMatrix);
+
+    // Get the dimensions of the input image
+    int width = distortedImage.cols;
+    int height = distortedImage.rows;
+
+    // Define the region of interest (ROI) coordinates
+    int roiX = (width - 624) / 2;
+    int roiY = (height - 464) / 2;
+    int roiWidth = 624;
+    int roiHeight = 464;
+
+    // Create a ROI (Region of Interest) from the input image
+    cv::Rect roiRect(roiX, roiY, roiWidth, roiHeight);
+    cv::Mat retImage = distortedImage(roiRect).clone();
 
     //cv::Mat claheImage;
     //cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();
@@ -303,10 +466,10 @@ cv::Mat Tracking::PreProcess1(const cv::Mat& inputImage) {
     //cv::bilateralFilter(croppedImage, denoisedImage, 9, 75, 75);
     //cv::fastNlMeansDenoising(croppedImage, denoisedImage, 10, 7, 21);
 
-    cv::Mat gammaImage = PreGamma(croppedImage, 0.5);
+    //cv::Mat gammaImage = PreGamma(croppedImage, 0.5);
 
     // Return image
-    return gammaImage;
+    return retImage;
 }
 
 void Tracking::FAST_t(const cv::Mat& _img, std::vector<cv::KeyPoint>& keypoints, bool nonmax_suppression)
@@ -330,7 +493,7 @@ void Tracking::FAST_t(const cv::Mat& _img, std::vector<cv::KeyPoint>& keypoints,
     cpbuf[2] = cpbuf[1] + img.cols + 1;
     memset(buf[0], 0, img.cols * 3);
     
-    // Since L-FAST uses circle values of pti, extend 3 to 4 
+    // Since L-FAST uses circle values of pti, extend 3 to 
     for (i = 4; i < img.rows - 3; i++)
     {
         const uchar* ptr = img.ptr<uchar>(i) + 3;
@@ -379,14 +542,19 @@ void Tracking::FAST_t(const cv::Mat& _img, std::vector<cv::KeyPoint>& keypoints,
                 //  mark pti as 255. When there are two or more pti values of 255, p is a corner.Otherwise, p is
                 //  not a point feature
                 count = 0;
+                int value = 0;
                 
                 for (k = 0; k < patternSize; k++)
                 {
-                    bool x1 = ptr[pixel[k]] > 0 ? 1 : 0;
-                    bool x2 = ptr[pixel[k + K]] > 0 ? 1 : 0;
+                    int x1 = (ptr[pixel[k]] > 254) ? 2 : (ptr[pixel[k]] > 0) ?  1 : 0;
+                    int x2 = (ptr[pixel[k+K]] > 254) ? 2 : (ptr[pixel[k+K]] > 0) ? 1 : 0;
+                    //BUG!! Find the symmetric point of P !!
+
                     if (!x1) continue;
+
                     if (x1 && x2) {
                         count++;
+                        value += (x1 + x2);
                         continue;
                     }
                     

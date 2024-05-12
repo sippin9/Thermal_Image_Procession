@@ -13,6 +13,8 @@
 
 class Tracking {
 public:
+    static cv::Mat Histo(const cv::Mat& im);
+    static cv::Mat Histo1(const cv::Mat& im);
     static cv::Mat PreProcess(const cv::Mat& im);
     static cv::Mat PreProcess1(const cv::Mat& im);
     static cv::Mat PreSVD(const cv::Mat& imRectRight);
